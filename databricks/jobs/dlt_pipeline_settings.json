@@ -1,0 +1,26 @@
+{
+  "name": "retail-bronze-silver-gold-dlt",
+  "development": false,
+  "continuous": false,
+  "channel": "CURRENT",
+  "edition": "ADVANCED",
+  "photon": true,
+  "libraries": [
+    {
+      "notebook": {
+        "path": "/Shared/retail-lakehouse/dlt/retail_bronze_silver_dlt"
+      }
+    }
+  ],
+  "configuration": {
+    "retail.source_base": "gs://${BRONZE_BUCKET}",
+    "retail.schema_base": "gs://${CHECKPOINT_BUCKET}/schemas"
+  },
+  "clusters": [
+    {
+      "label": "default",
+      "num_workers": 2,
+      "node_type_id": "n2-standard-4"
+    }
+  ]
+}

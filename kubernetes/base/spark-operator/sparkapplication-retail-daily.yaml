@@ -1,0 +1,42 @@
+apiVersion: sparkoperator.k8s.io/v1beta2
+kind: SparkApplication
+metadata:
+  name: retail-supply-chain-enrichment
+  namespace: retail-lakehouse
+spec:
+  type: Python
+  pythonVersion: "3"
+  mode: cluster
+  image: ${ARTIFACT_REGISTRY}/retail-etl-service:${IMAGE_TAG}
+  imagePullPolicy: IfNotPresent
+  mainApplicationFile: local:///app/spark/jobs/enrich_supply_chain.py
+  arguments:
+    - --input
+    - gs://${BRONZE_BUCKET}/supply_chain_events
+    - --output
+    - gs://${SILVER_BUCKET}/supply_chain_events
+  sparkVersion: "3.5.1"
+  restartPolicy:
+    type: OnFailure
+    onFailureRetries: 3
+    onFailureRetryInterval: 60
+    onSubmissionFailureRetries: 3
+    onSubmissionFailureRetryInterval: 60
+  driver:
+    cores: 1
+    memory: 1024m
+    serviceAccount: retail-workloads
+    labels:
+      app.kubernetes.io/name: retail-spark-driver
+  executor:
+    cores: 1
+    instances: 3
+    memory: 2048m
+    labels:
+      app.kubernetes.io/name: retail-spark-executor
+  deps:
+    pyFiles: []
+  sparkConf:
+    spark.sql.shuffle.partitions: "200"
+    spark.sql.adaptive.enabled: "true"
+    spark.hadoop.google.cloud.auth.service.account.enable: "false"

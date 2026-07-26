@@ -1,0 +1,34 @@
+{
+  "name": "m_erp_inventory_cdc_to_pubsub",
+  "description": "Read ERP inventory CDC records and publish normalized events to Pub/Sub.",
+  "source": {
+    "type": "database_cdc",
+    "connection": "ERP_INVENTORY_CDC_CONN",
+    "tables": ["inventory_position", "inventory_adjustment"],
+    "watermark_column": "commit_timestamp"
+  },
+  "transformations": [
+    {
+      "name": "tx_cdc_normalize",
+      "type": "expression",
+      "rules": [
+        "map insert/update/delete to operation field",
+        "rename item_id to sku",
+        "derive inventory_event_id from source_lsn and primary key",
+        "convert commit_timestamp to UTC event_time"
+      ]
+    }
+  ],
+  "target": {
+    "type": "google_pubsub",
+    "connection": "GCP_PUBSUB_CONN",
+    "topic": "$$INVENTORY_TOPIC",
+    "ordering_key": "store_id"
+  },
+  "operational_controls": {
+    "checkpoint": "$$CDC_CHECKPOINT_NAME",
+    "exactly_once_strategy": "source watermark plus Pub/Sub ordering key",
+    "dead_letter_topic": "$$INVENTORY_DLQ_TOPIC"
+  }
+}
+

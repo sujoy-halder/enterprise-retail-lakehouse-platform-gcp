@@ -1,0 +1,11 @@
+.git/
+**/.terraform/
+**/__pycache__/
+**/.pytest_cache/
+dbt/retail_analytics/target/
+dbt/retail_analytics/dbt_packages/
+gha-creds-*.json
+.env
+terraform/**/*.tfstate
+terraform/**/*.tfstate.*
+

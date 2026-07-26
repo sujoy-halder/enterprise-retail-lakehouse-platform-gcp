@@ -1,0 +1,20 @@
+project_id          = "your-prod-gcp-project-id"
+github_owner        = "your-org"
+github_repo         = "gcp-data-platform"
+prefix              = "retail-lakehouse"
+region              = "us-central1"
+secondary_region    = "us-east1"
+bigquery_location   = "us-central1"
+billing_alert_email = "data-platform-alerts@example.com"
+
+authorized_cidr_blocks = [
+  {
+    cidr_block   = "203.0.113.10/32"
+    display_name = "corporate-vpn"
+  }
+]
+
+labels = {
+  owner       = "data-platform"
+  cost_center = "analytics"
+}

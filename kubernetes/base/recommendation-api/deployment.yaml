@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retail-recommendation-api
+  namespace: retail-lakehouse
+  labels:
+    app.kubernetes.io/name: retail-recommendation-api
+    app.kubernetes.io/part-of: retail-lakehouse
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: retail-recommendation-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: retail-recommendation-api
+        app.kubernetes.io/part-of: retail-lakehouse
+    spec:
+      serviceAccountName: retail-workloads
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: recommendation-api
+          image: ${ARTIFACT_REGISTRY}/retail-recommendation-api:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: retail-platform-config
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi

@@ -1,0 +1,68 @@
+{
+  "name": "m_supplier_csv_to_gcs_bronze",
+  "description": "Ingest supplier CSV drops into the retail lakehouse bronze bucket with validation and quarantine routing.",
+  "source": {
+    "type": "sftp",
+    "connection": "SUPPLIER_SFTP_CONN",
+    "path": "$$SUPPLIER_DROP_PATH",
+    "format": "csv",
+    "options": {
+      "header": true,
+      "delimiter": ",",
+      "encoding": "UTF-8"
+    }
+  },
+  "transformations": [
+    {
+      "name": "tx_standardize_columns",
+      "type": "expression",
+      "rules": [
+        "trim all string fields",
+        "cast quantity fields to integer",
+        "cast currency fields to decimal(18,2)",
+        "derive ingestion_time as current timestamp"
+      ]
+    },
+    {
+      "name": "dq_required_fields",
+      "type": "data_quality",
+      "rules": [
+        "supplier_id is not null",
+        "sku is not null",
+        "event_time is parseable timestamp",
+        "quantity >= 0"
+      ]
+    },
+    {
+      "name": "rt_valid_invalid",
+      "type": "router",
+      "groups": {
+        "valid": "all data quality rules pass",
+        "invalid": "one or more data quality rules fail"
+      }
+    }
+  ],
+  "targets": [
+    {
+      "name": "gcs_bronze_supplier_valid",
+      "type": "google_cloud_storage",
+      "connection": "GCP_GCS_CONN",
+      "path": "gs://$$BRONZE_BUCKET/supplier_csv/event_date=$$RUN_DATE/",
+      "format": "json"
+    },
+    {
+      "name": "gcs_quarantine_supplier_invalid",
+      "type": "google_cloud_storage",
+      "connection": "GCP_GCS_CONN",
+      "path": "gs://$$QUARANTINE_BUCKET/supplier_csv/run_id=$$RUN_ID/",
+      "format": "json"
+    }
+  ],
+  "operational_controls": {
+    "idempotency_key": ["supplier_id", "sku", "event_time"],
+    "retry_policy": "3 retries with exponential backoff",
+    "lineage_tags": ["retail", "supplier", "bronze"],
+    "alert_on_invalid_rate_gt_pct": 2.0
+  }
+}
+

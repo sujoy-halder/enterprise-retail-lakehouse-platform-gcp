@@ -1,0 +1,36 @@
+{
+  "name": "retail-lakehouse-autoloader",
+  "max_concurrent_runs": 1,
+  "tasks": [
+    {
+      "task_key": "autoload_pos",
+      "new_cluster": {
+        "spark_version": "15.4.x-scala2.12",
+        "node_type_id": "n2-standard-4",
+        "autoscale": {
+          "min_workers": 1,
+          "max_workers": 4
+        },
+        "gcp_attributes": {
+          "availability": "ON_DEMAND_GCP"
+        }
+      },
+      "spark_python_task": {
+        "python_file": "dbfs:/retail/jobs/retail_streaming_autoloader.py",
+        "parameters": [
+          "--source",
+          "pos_transactions",
+          "--source-path",
+          "{{bronze_bucket}}/pos_transactions",
+          "--target-table",
+          "retail_bronze.pos_transactions",
+          "--checkpoint-path",
+          "{{checkpoint_bucket}}/pos_transactions",
+          "--schema-path",
+          "{{checkpoint_bucket}}/schemas/pos_transactions"
+        ]
+      }
+    }
+  ]
+}
+

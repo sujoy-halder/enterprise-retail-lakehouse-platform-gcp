@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: fct_daily_sales
+    description: Daily sales mart partitioned by business date.
+    columns:
+      - name: business_date
+        tests: [not_null]
+      - name: store_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+      - name: units_sold
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+
+  - name: fct_inventory_forecast_features
+    columns:
+      - name: available_quantity
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+
+  - name: customer_recommendations
+    columns:
+      - name: customer_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]

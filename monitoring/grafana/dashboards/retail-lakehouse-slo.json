@@ -1,0 +1,76 @@
+{
+  "title": "Retail Lakehouse SLO",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "tags": ["retail", "lakehouse", "gcp"],
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Pub/Sub Oldest Unacked Message Age",
+      "datasource": {"type": "stackdriver", "uid": "Google Cloud Monitoring"},
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "timeSeriesQuery",
+          "metricType": "pubsub.googleapis.com/subscription/oldest_unacked_message_age",
+          "crossSeriesReducer": "REDUCE_MAX",
+          "perSeriesAligner": "ALIGN_MAX",
+          "alignmentPeriod": "60s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 600},
+              {"color": "red", "value": 900}
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "GKE CPU Request Cores",
+      "datasource": {"type": "stackdriver", "uid": "Google Cloud Monitoring"},
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "timeSeriesQuery",
+          "metricType": "kubernetes.io/container/cpu/request_cores",
+          "crossSeriesReducer": "REDUCE_SUM",
+          "perSeriesAligner": "ALIGN_MEAN",
+          "alignmentPeriod": "60s"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "BigQuery Slots Consumed",
+      "datasource": {"type": "stackdriver", "uid": "Google Cloud Monitoring"},
+      "targets": [
+        {
+          "refId": "A",
+          "queryType": "timeSeriesQuery",
+          "metricType": "bigquery.googleapis.com/query/slot_utilization",
+          "crossSeriesReducer": "REDUCE_MEAN",
+          "perSeriesAligner": "ALIGN_MEAN",
+          "alignmentPeriod": "300s"
+        }
+      ]
+    }
+  ]
+}
+

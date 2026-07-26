@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: stg_pos_transactions
+    columns:
+      - name: transaction_id
+        tests: [not_null, unique]
+      - name: store_id
+        tests: [not_null]
+      - name: product_id
+        tests: [not_null]
+      - name: quantity
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+
+  - name: stg_inventory_positions
+    columns:
+      - name: store_id
+        tests: [not_null]
+      - name: sku
+        tests: [not_null]
+      - name: on_hand_quantity
+        tests:
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"

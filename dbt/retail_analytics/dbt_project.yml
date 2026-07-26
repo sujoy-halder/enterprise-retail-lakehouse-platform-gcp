@@ -1,0 +1,22 @@
+name: retail_analytics
+version: 1.0.0
+config-version: 2
+
+profile: retail_analytics
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+
+models:
+  retail_analytics:
+    +persist_docs:
+      relation: true
+      columns: true
+    silver:
+      +schema: silver
+      +materialized: incremental
+    gold:
+      +schema: gold
+      +materialized: table
+

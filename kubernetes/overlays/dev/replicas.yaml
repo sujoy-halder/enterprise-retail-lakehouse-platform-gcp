@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retail-etl-service
+  namespace: retail-lakehouse
+spec:
+  replicas: 1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: retail-recommendation-api
+  namespace: retail-lakehouse
+spec:
+  replicas: 1
+

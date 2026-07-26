@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: retail-lakehouse
+resources:
+  - namespace.yaml
+  - service-account.yaml
+  - networkpolicy.yaml
+  - etl-service/configmap.yaml
+  - etl-service/deployment.yaml
+  - etl-service/service.yaml
+  - etl-service/hpa.yaml
+  - etl-service/pdb.yaml
+  - recommendation-api/deployment.yaml
+  - recommendation-api/service.yaml
+  - recommendation-api/hpa.yaml
+  - recommendation-api/pdb.yaml
+  - spark-operator/sparkapplication-retail-daily.yaml
+

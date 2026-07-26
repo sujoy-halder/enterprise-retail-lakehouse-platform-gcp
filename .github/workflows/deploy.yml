@@ -1,0 +1,143 @@
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy"
+        required: true
+        default: "dev"
+        type: choice
+        options: ["dev", "prod"]
+      apply_terraform:
+        description: "Apply Terraform plan"
+        required: true
+        default: true
+        type: boolean
+      image_tag:
+        description: "Container tag"
+        required: true
+        default: "manual"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    env:
+      ENVIRONMENT: ${{ inputs.environment }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      PREFIX: ${{ vars.PLATFORM_PREFIX }}
+      TF_STATE_BUCKET: ${{ vars.TERRAFORM_STATE_BUCKET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.10.5
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gettext-base jq
+          gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Terraform plan
+        run: |
+          terraform -chdir=terraform/envs/${ENVIRONMENT} init \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="prefix=${ENVIRONMENT}"
+          terraform -chdir=terraform/envs/${ENVIRONMENT} plan -out=tfplan
+
+      - name: Terraform apply
+        if: ${{ inputs.apply_terraform }}
+        run: terraform -chdir=terraform/envs/${ENVIRONMENT} apply -auto-approve tfplan
+
+      - name: Export Terraform outputs
+        run: |
+          terraform -chdir=terraform/envs/${ENVIRONMENT} output -raw artifact_registry_url >> /tmp/artifact_registry
+          echo "ARTIFACT_REGISTRY=$(cat /tmp/artifact_registry)" >> "$GITHUB_ENV"
+          echo "GKE_CLUSTER=$(terraform -chdir=terraform/envs/${ENVIRONMENT} output -raw gke_cluster_name)" >> "$GITHUB_ENV"
+          echo "GKE_LOCATION=$(terraform -chdir=terraform/envs/${ENVIRONMENT} output -raw gke_location)" >> "$GITHUB_ENV"
+          echo "GCP_WORKLOAD_SERVICE_ACCOUNT=$(terraform -chdir=terraform/envs/${ENVIRONMENT} output -raw gke_workload_service_account)" >> "$GITHUB_ENV"
+          echo "COMPOSER_DAG_GCS_PREFIX=$(terraform -chdir=terraform/envs/${ENVIRONMENT} output -raw composer_dag_gcs_prefix 2>/dev/null || true)" >> "$GITHUB_ENV"
+          terraform -chdir=terraform/envs/${ENVIRONMENT} output -json lake_buckets > /tmp/lake_buckets.json
+          terraform -chdir=terraform/envs/${ENVIRONMENT} output -json pubsub_topics > /tmp/pubsub_topics.json
+          echo "BRONZE_BUCKET=$(jq -r 'to_entries[] | select(.key | startswith(\"bronze-\")) | .value' /tmp/lake_buckets.json | head -1)" >> "$GITHUB_ENV"
+          echo "SILVER_BUCKET=$(jq -r 'to_entries[] | select(.key | startswith(\"silver-\")) | .value' /tmp/lake_buckets.json | head -1)" >> "$GITHUB_ENV"
+          echo "CHECKPOINT_BUCKET=$(jq -r 'to_entries[] | select(.key | startswith(\"checkpoints-\")) | .value' /tmp/lake_buckets.json | head -1)" >> "$GITHUB_ENV"
+          echo "QUARANTINE_BUCKET=$(jq -r 'to_entries[] | select(.key | startswith(\"quarantine-\")) | .value' /tmp/lake_buckets.json | head -1)" >> "$GITHUB_ENV"
+          echo "POS_SUBSCRIPTION=${PREFIX}-${ENVIRONMENT}-pos-transactions-sub" >> "$GITHUB_ENV"
+          echo "INVENTORY_SUBSCRIPTION=${PREFIX}-${ENVIRONMENT}-inventory-sub" >> "$GITHUB_ENV"
+          echo "BIGQUERY_DATASET_PREFIX=${PREFIX//-/_}_${ENVIRONMENT}" >> "$GITHUB_ENV"
+
+      - name: Build and push containers
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build -f docker/etl-service/Dockerfile -t "${ARTIFACT_REGISTRY}/retail-etl-service:${IMAGE_TAG}" .
+          docker build -f docker/recommendation-api/Dockerfile -t "${ARTIFACT_REGISTRY}/retail-recommendation-api:${IMAGE_TAG}" .
+          docker push "${ARTIFACT_REGISTRY}/retail-etl-service:${IMAGE_TAG}"
+          docker push "${ARTIFACT_REGISTRY}/retail-recommendation-api:${IMAGE_TAG}"
+
+      - name: Deploy to GKE
+        run: |
+          gcloud container clusters get-credentials "$GKE_CLUSTER" --location "$GKE_LOCATION" --project "$PROJECT_ID"
+          bash scripts/render_k8s.sh "$ENVIRONMENT" | kubectl apply -f -
+          kubectl -n retail-lakehouse rollout status deploy/retail-etl-service --timeout=300s
+          kubectl -n retail-lakehouse rollout status deploy/retail-recommendation-api --timeout=300s
+
+      - name: Sync Composer assets
+        if: ${{ env.COMPOSER_DAG_GCS_PREFIX != '' }}
+        run: bash scripts/sync_composer.sh
+
+      - name: dbt build
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          DBT_TARGET: ${{ inputs.environment }}
+          DBT_BRONZE_DATASET: ${{ env.BIGQUERY_DATASET_PREFIX }}_bronze
+          DBT_SILVER_DATASET: ${{ env.BIGQUERY_DATASET_PREFIX }}_silver
+          BIGQUERY_LOCATION: ${{ vars.BIGQUERY_LOCATION }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install dbt-bigquery
+          cp dbt/retail_analytics/profiles.yml.example dbt/retail_analytics/profiles.yml
+          cd dbt/retail_analytics
+          dbt deps
+          dbt build --profiles-dir . --target "$DBT_TARGET"
+
+      - name: Set up Databricks CLI
+        if: ${{ vars.DATABRICKS_HOST != '' }}
+        uses: databricks/setup-cli@dd60b7b133203edca3e8f08b1e053c43a979296e # v1.8.0
+
+      - name: Databricks assets
+        if: ${{ vars.DATABRICKS_HOST != '' }}
+        env:
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_PIPELINE_ID: ${{ vars.DATABRICKS_PIPELINE_ID }}
+        run: bash scripts/deploy_databricks.sh
+
+      - name: Smoke tests
+        run: bash scripts/smoke_test.sh

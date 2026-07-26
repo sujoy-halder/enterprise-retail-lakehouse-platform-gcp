@@ -1,0 +1,28 @@
+version: 2
+
+sources:
+  - name: bronze
+    database: "{{ env_var('GCP_PROJECT_ID') }}"
+    schema: "{{ env_var('DBT_BRONZE_DATASET', 'retail_lakehouse_dev_bronze') }}"
+    config:
+      loaded_at_field: ingestion_time
+      freshness:
+        warn_after: {count: 2, period: hour}
+        error_after: {count: 6, period: hour}
+    tables:
+      - name: pos_transactions
+        columns:
+          - name: transaction_id
+            tests: [not_null]
+          - name: store_id
+            tests: [not_null]
+          - name: product_id
+            tests: [not_null]
+      - name: customer_activity
+      - name: supply_chain_events
+
+  - name: silver
+    database: "{{ env_var('GCP_PROJECT_ID') }}"
+    schema: "{{ env_var('DBT_SILVER_DATASET', 'retail_lakehouse_dev_silver') }}"
+    tables:
+      - name: inventory_positions
