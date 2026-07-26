@@ -1,4 +1,4 @@
-fastapi==0.139.2
+fastapi==0.140.0
 uvicorn[standard]==0.51.0
 pydantic-settings==2.10.1
 google-cloud-bigquery==3.25.0
