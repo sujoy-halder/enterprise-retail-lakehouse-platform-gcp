@@ -129,7 +129,7 @@ jobs:
 
       - name: Set up Databricks CLI
         if: ${{ vars.DATABRICKS_HOST != '' }}
-        uses: databricks/setup-cli@dd60b7b133203edca3e8f08b1e053c43a979296e # v1.8.0
+        uses: databricks/setup-cli@d76f84cea9893ce68311a1f33fb0c95af6c963b7 # v1.17.0
 
       - name: Databricks assets
         if: ${{ vars.DATABRICKS_HOST != '' }}
